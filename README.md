@@ -1,6 +1,6 @@
 # Multi-Agent Reinforcement Learning with Reward Machines for Mixed Cooperative-Competitive Environments
 
-Code base for the AAMAS 2025 submission (Submission Number 800): Multi-Agent Reinforcement Learning with Reward Machines for Mixed Cooperative-Competitive Environments.
+Code base for the ICML 2025 submission (Submission Number 10396): Multi-Agent Reinforcement Learning with Reward Machines for Mixed Cooperative-Competitive Environments.
 
 Note: This is a restricted version due to file size, licensing, and anonymity considerations. Full data and code will be
 open-sourced with the paper.
