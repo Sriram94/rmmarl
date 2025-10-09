@@ -61,8 +61,7 @@ class RewardMachine:
 # Opponent model
 # -----------------------------
 class OpponentModel(nn.Module):
-    #Predicts opponent joint-action id (for simplicity we assume opponents' joint actions are enumerated).
-    def __init__(self, obs_dim: int, rm_state_dim: int, prev_op_action_dim: int, hidden_sizes=[128, 128], n_op_actions=10):
+    def __init__(self, obs_dim: int, rm_state_dim: int, prev_op_action_dim: int, hidden_sizes=[64, 64, 64, 64], n_op_actions=10):
         super().__init__()
         self.n_op_actions = n_op_actions
         layers = []
@@ -71,20 +70,20 @@ class OpponentModel(nn.Module):
             layers.append(nn.Linear(in_dim, h))
             layers.append(nn.ReLU())
             in_dim = h
-        layers.append(nn.Linear(in_dim, n_op_actions))
+        layers.append(nn.Softmax(nn.Linear(in_dim, n_op_actions)))
         self.net = nn.Sequential(*layers)
 
     def forward(self, obs: torch.Tensor, rm_onehot: torch.Tensor, prev_op_action_onehot: torch.Tensor):
         x = torch.cat([obs, rm_onehot, prev_op_action_onehot], dim=-1)
         logits = self.net(x)
-        return logits  # raw logits; use CrossEntropyLoss in training
+        return logits  
 
 # -----------------------------
 # Q-network
 # -----------------------------
 class QNetwork(nn.Module):
     #Shared Q-network that takes (obs, rm_onehot, predicted_op_action_onehot) and outputs Q-values for own actions.
-    def __init__(self, obs_dim: int, rm_state_dim: int, op_action_dim: int, n_actions: int, hidden_sizes=[256, 256]):
+    def __init__(self, obs_dim: int, rm_state_dim: int, op_action_dim: int, n_actions: int, hidden_sizes=[1024, 1024, 1024, 1024, 1024, 1024]):
         super().__init__()
         in_dim = obs_dim + rm_state_dim + op_action_dim
         layers = []
@@ -133,11 +132,11 @@ class DCROMAgent:
                  rm: RewardMachine,
                  n_op_actions: int,
                  prev_op_action_dim: int,
-                 lr: float = 1e-3,
-                 gamma: float = 0.99,
-                 buffer_size: int = 100000,
+                 lr: float = 0.01,
+                 gamma: float = 0.9,
+                 buffer_size: int = int(2e7),
                  batch_size: int = 64,
-                 target_update_freq: int = 1000,
+                 target_update_freq: int = 100,
                  device: torch.device = device):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
@@ -179,7 +178,7 @@ class DCROMAgent:
             arr[i, int(idx)] = 1.0
         return torch.tensor(arr, dtype=torch.float32, device=self.device)
 
-    def select_action(self, obs: np.ndarray, rm_state: int, prev_op_action_idx: int, eps: float = 0.0):
+    def select_action(self, obs: np.ndarray, rm_state: int, prev_op_action_idx: int, eps: float = 0.1):
         obs_t = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         rm_oh = torch.zeros((1, self.n_rm_states), dtype=torch.float32, device=self.device)
         rm_oh[0, rm_state] = 1.0

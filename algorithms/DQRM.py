@@ -48,7 +48,7 @@ class RewardMachine:
 # Q-network (per RM state)
 # -----------------------------
 class QNetwork(nn.Module):
-    def __init__(self, obs_dim: int, n_actions: int, hidden_sizes=[128,128]):
+    def __init__(self, obs_dim: int, n_actions: int, hidden_sizes=[1024, 1024, 1024, 1024, 1024, 1024]):
         super().__init__()
         in_dim = obs_dim
         layers = []
@@ -93,11 +93,11 @@ class DQRMAgent:
                  obs_dim: int,
                  n_actions: int,
                  rm: RewardMachine,
-                 lr: float = 1e-3,
-                 gamma: float = 0.99,
-                 buffer_size: int = 100000,
+                 lr: float = 0.01,
+                 gamma: float = 0.9,
+                 buffer_size: int = int(2e7),
                  batch_size: int = 64,
-                 target_update_freq: int = 1000,
+                 target_update_freq: int = 100,
                  device: torch.device = device):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
@@ -125,7 +125,7 @@ class DQRMAgent:
         self.update_count = 0
         self.target_update_freq = target_update_freq
 
-    def select_action(self, obs: np.ndarray, rm_state: int, eps: float = 0.0):
+    def select_action(self, obs: np.ndarray, rm_state: int, eps: float = 0.1):
         obs_t = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
             qvals = self.q_nets[rm_state](obs_t)  # select from network corresponding to current RM state

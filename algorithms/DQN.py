@@ -11,6 +11,7 @@ Key components:
 
 """
 
+
 import random
 from typing import Callable, Any, Dict, Tuple, List
 import numpy as np
@@ -42,17 +43,18 @@ class RewardMachine:
         return u in self.terminal_states
 
 # -----------------------------
-# Q-network
+# Deep Q-network (7-layer MLP)
 # -----------------------------
 class QNetwork(nn.Module):
-    def __init__(self, obs_dim:int, rm_state_dim:int, n_actions:int, hidden_sizes=[256,256]):
+    def __init__(self, obs_dim:int, rm_state_dim:int, n_actions:int):
         super().__init__()
         in_dim = obs_dim + rm_state_dim
+        hidden_size = 1024
         layers = []
-        for h in hidden_sizes:
-            layers.append(nn.Linear(in_dim, h))
+        for _ in range(6):
+            layers.append(nn.Linear(in_dim, hidden_size))
             layers.append(nn.ReLU())
-            in_dim = h
+            in_dim = hidden_size
         layers.append(nn.Linear(in_dim, n_actions))
         self.net = nn.Sequential(*layers)
 
@@ -84,18 +86,19 @@ class ReplayBuffer:
         return len(self.buffer)
 
 # -----------------------------
-# DQN on Cross-Product State Space
+# DQN Agent (Cross-Product)
 # -----------------------------
 class DQNCrossProductAgent:
     def __init__(self,
                  obs_dim:int,
                  n_actions:int,
                  rm:RewardMachine,
-                 lr:float=1e-3,
-                 gamma:float=0.99,
-                 buffer_size:int=100000,
+                 lr:float=0.01,
+                 gamma:float=0.9,
+                 buffer_size:int=int(2e7),
                  batch_size:int=64,
-                 target_update_freq:int=1000,
+                 target_update_freq:int=100,
+                 fixed_eps:float=0.1,
                  device:torch.device=device):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
@@ -104,6 +107,7 @@ class DQNCrossProductAgent:
         self.gamma = gamma
         self.batch_size = batch_size
         self.device = device
+        self.fixed_eps = fixed_eps
 
         # Q-network and target
         self.q_net = QNetwork(obs_dim, self.n_rm_states, n_actions).to(device)
@@ -115,25 +119,18 @@ class DQNCrossProductAgent:
         self.update_count = 0
         self.target_update_freq = target_update_freq
 
-    def one_hot(self, indices, depth:int):
-        arr = np.zeros((len(indices), depth), dtype=np.float32)
-        for i, idx in enumerate(indices):
-            arr[i, int(idx)] = 1.0
-        return torch.tensor(arr, dtype=torch.float32, device=self.device)
-
-    def select_action(self, obs:np.ndarray, rm_state:int, eps:float=0.0):
+    def select_action(self, obs:np.ndarray, rm_state:int):
         obs_t = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         rm_oh = torch.zeros((1, self.n_rm_states), dtype=torch.float32, device=self.device)
         rm_oh[0, rm_state] = 1.0
         with torch.no_grad():
             qvals = self.q_net(obs_t, rm_oh)
-            if random.random() < eps:
+            if random.random() < self.fixed_eps:
                 return random.randrange(self.n_actions)
             else:
                 return int(torch.argmax(qvals, dim=-1).item())
 
     def store_transition(self, s, u, a, r, s_next, u_next, done):
-        # store: s, u, a, r, s_next, u_next, done
         self.replay.push((s, u, a, r, s_next, u_next, float(done)))
 
     def train_step(self):
@@ -148,17 +145,15 @@ class DQNCrossProductAgent:
         r_batch = torch.tensor(r_batch, dtype=torch.float32, device=self.device)
         done_batch = torch.tensor(done_batch, dtype=torch.float32, device=self.device)
 
-        # prepare one-hots for current and next rm states
         rm_onehot = F.one_hot(u_batch, num_classes=self.n_rm_states).float()
         rm_next_onehot = F.one_hot(u_next_batch, num_classes=self.n_rm_states).float()
 
-        # compute target: r + gamma * max_a' Q_target(s_next, u_next)
+        # Compute targets
         with torch.no_grad():
             q_next = self.q_target(s_next_batch, rm_next_onehot)
             max_q_next, _ = q_next.max(dim=1)
             target_q = r_batch + (1.0 - done_batch) * (self.gamma * max_q_next)
 
-        # current q for taken actions using current network on (s, u)
         q_vals = self.q_net(s_batch, rm_onehot)
         q_taken = q_vals.gather(1, a_batch.unsqueeze(1)).squeeze(1)
 
@@ -207,7 +202,7 @@ if __name__ == '__main__':
     obs_dim = 4
     n_actions = 5
     rm = build_dummy_rm()
-    agent = DQNCrossProductAgent(obs_dim, n_actions, rm, lr=1e-3, gamma=0.99, buffer_size=2000, batch_size=32, target_update_freq=50)
+    agent = DQNCrossProductAgent(obs_dim, n_actions, rm)
 
     # populate replay buffer with random transitions
     for _ in range(600):
@@ -219,7 +214,7 @@ if __name__ == '__main__':
         r = rm.reward(u, u_next)
         agent.store_transition(s, u, a, r, s_next, u_next, done)
 
-    # run some training steps
+    # training loop with fixed epsilon
     for step in range(300):
         metrics = agent.train_step()
         if metrics and step % 25 == 0:

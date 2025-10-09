@@ -20,7 +20,9 @@ class OpponentModel(nn.Module):
     def __init__(self, state_dim: int, n_actions: int, hidden_dim: int = 64):
         super(OpponentModel, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(state_dim + 2, hidden_dim),  # state + own_rm_state + prev_action
+            nn.Linear(state_dim + 2, hidden_dim), 
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),

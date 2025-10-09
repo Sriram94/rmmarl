@@ -46,7 +46,7 @@ class RewardMachine:
 # Q-network
 # -----------------------------
 class QNetwork(nn.Module):
-    def __init__(self, obs_dim:int, rm_state_dim:int, prev_op_dim:int, n_actions:int, hidden_sizes=[256,256]):
+    def __init__(self, obs_dim:int, rm_state_dim:int, prev_op_dim:int, n_actions:int, hidden_sizes=[1024, 1024, 1024, 1024, 1024, 1024]):
         super().__init__()
         # We'll treat each input as its own component; internally we'll concat them before MLP
         in_dim = obs_dim + rm_state_dim + prev_op_dim
@@ -95,11 +95,11 @@ class MADQNCrossProductAgent:
                  n_actions:int,
                  rm:RewardMachine,
                  n_prev_op_actions:int,
-                 lr:float=1e-3,
+                 lr:float=0.01,
                  gamma:float=0.99,
-                 buffer_size:int=100000,
+                 buffer_size:int=int(2e7),
                  batch_size:int=64,
-                 target_update_freq:int=1000,
+                 target_update_freq:int=100,
                  device:torch.device=device):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
@@ -126,7 +126,7 @@ class MADQNCrossProductAgent:
             arr[i, int(idx)] = 1.0
         return torch.tensor(arr, dtype=torch.float32, device=self.device)
 
-    def select_action(self, obs:np.ndarray, rm_state:int, prev_op_action_idx:int, eps:float=0.0):
+    def select_action(self, obs:np.ndarray, rm_state:int, prev_op_action_idx:int, eps:float=0.1):
         obs_t = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         rm_oh = torch.zeros((1, self.n_rm_states), dtype=torch.float32, device=self.device)
         rm_oh[0, rm_state] = 1.0

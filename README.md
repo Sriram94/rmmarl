@@ -8,13 +8,13 @@ open-sourced with the paper.
 ## Code structure
 
 
+- See folder algorithms for all our algorithmic implementations.
+
 - See folder playground for Pommerman environment.
 
-- See folder Gymnasium-Robotics for multi-agent Ant environment.
+- See folder PettingZoo for Multi-Agent Waterworld environment.
 
-- See folder PettingZoo  for multi-agent Waterworld environment.
-
-- See folder overcooked_ai for the Overcooked environment.
+- See folder overcooked\_ai for the Overcooked environment.
 
 
 
@@ -73,10 +73,19 @@ pip install -U .
 
 For more help with the installation, look at the instrctions in [Playground](https://github.com/MultiAgentLearning/playground). 
 
-Now you can just run the respective files mentioned in the above section to run our code.
+Now, we are ready to start training. This provides an example with a two agent version of Pommerman with one agent playing DCROM and the other agent playing DQN. The file can be modified with our algorithm scripts for all other training and execution performances. 
 
 
-For the Pursuit domain you also need to install petting zoo library. 
+```shell
+cd playground/pommerman
+python DCROMvsDQN.py
+```
+
+
+Now you can just run the respective files mentioned in the above section to run our code. Use n\_agents=2 for the two agent version and n\_agents=4 for the team version of Pommerman.
+
+
+For the Waterworld domain you also need to install petting zoo library. 
 
 ### Petting Zoo (Waterworld Environment)
 
@@ -101,10 +110,58 @@ pip install ./
 
 Please install petting zoo using the instruction above and not from source (our files contains some differences from the source files). 
 
-Now, you can just run the relevant files mentioned in the above section to run our code. 
 
 
-For installation of Overcooked follow the instructions [here](https://github.com/HumanCompatibleAI/overcooked_ai), and
-for the installation of Multi-agent Mujoco follow the instructions [here](https://robotics.farama.org/content/installation/)
+
+Now, we are ready to start training. This provides an example with Pursuer agents playing DCROM and Poison agents playing DQN. The file can be modified with our algorithm scripts for all other training and execution performances. 
+
+
+```shell
+cd PettingZoo/test
+python waterworld.py
+```
+
+
+Now you can just run the respective files mentioned in the above section to run our code.
+
+
+### Overcooked
+
+
+```shell
+cd overcooked_ai
+uv venv
+uv sync
+```
+
+To verify installation, 
+
+```shell
+python testing/overcooked_test.py
+```
+
+
+Please install Overcooked using the instruction above and not from source (our files contains some differences from the source files). For installation help, more details are available [here](https://github.com/HumanCompatibleAI/overcooked_ai).
+
+
+
+
+Now, we are ready to start training. This provides an example with both Overcooked agents playing DQN. The DQN agents can be replaced with other agents in the algorithm folder for other experiments. 
+
+
+```shell
+cd overcooked_ai
+python overcooked_training.py
+```
+
+## Code Citations
+
+We would like to cite [Playground](https://github.com/MultiAgentLearning/playground) for code providing the environments used in the Pommerman experiments. 
+
+We would like to cite [PettingZoo](https://github.com/Farama-Foundation/PettingZoo) for code providing the environments used in the Waterworld experiments. 
+
+We would like to cite [Overcooked](https://github.com/HumanCompatibleAI/overcooked_ai) for code providing the environments used in the Overcooked experiments. 
+
+All of the above mentioned repositories have been released under open (MIT or Apache2) licenses. 
 
 
