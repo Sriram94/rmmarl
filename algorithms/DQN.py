@@ -1,17 +1,3 @@
-
-"""dqn_crossprod.py
-
-DQN on Cross-Product State Space 
-
-Key components:
-- RewardMachine: simple RM API (used to compute next RM state and reward)
-- QNetwork: consumes obs + rm_onehot and outputs Q-values
-- ReplayBuffer
-- DQNCrossProductAgent: performs DQN updates, target network management, and epsilon-greedy selection
-
-"""
-
-
 import random
 from typing import Callable, Any, Dict, Tuple, List
 import numpy as np
@@ -21,9 +7,6 @@ import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# -----------------------------
-# Reward Machine (simple API)
-# -----------------------------
 class RewardMachine:
     def __init__(self, n_states:int, delta:Dict[Tuple[int, Any], int], sigma:Dict[Tuple[int,int], float], label_fn:Callable[[Any], Any], terminal_states:List[int]=None):
         self.n_states = n_states
@@ -42,9 +25,6 @@ class RewardMachine:
     def is_terminal(self, u:int) -> bool:
         return u in self.terminal_states
 
-# -----------------------------
-# Deep Q-network (7-layer MLP)
-# -----------------------------
 class QNetwork(nn.Module):
     def __init__(self, obs_dim:int, rm_state_dim:int, n_actions:int):
         super().__init__()
@@ -62,9 +42,6 @@ class QNetwork(nn.Module):
         x = torch.cat([obs, rm_onehot], dim=-1)
         return self.net(x)
 
-# -----------------------------
-# Replay Buffer
-# -----------------------------
 class ReplayBuffer:
     def __init__(self, capacity:int):
         self.capacity = capacity
@@ -85,9 +62,6 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
-# -----------------------------
-# DQN Agent (Cross-Product)
-# -----------------------------
 class DQNCrossProductAgent:
     def __init__(self,
                  obs_dim:int,
@@ -170,9 +144,6 @@ class DQNCrossProductAgent:
 
         return {'q_loss': loss.item()}
 
-# -----------------------------
-# Dummy label and RM for testing
-# -----------------------------
 def _dummy_label_fn(env_state):
     s = np.array(env_state)
     ssum = float(s.sum())
@@ -204,7 +175,6 @@ if __name__ == '__main__':
     rm = build_dummy_rm()
     agent = DQNCrossProductAgent(obs_dim, n_actions, rm)
 
-    # populate replay buffer with random transitions
     for _ in range(600):
         s = np.random.randn(obs_dim).astype(np.float32)
         u = random.randrange(rm.n_states)
@@ -214,7 +184,6 @@ if __name__ == '__main__':
         r = rm.reward(u, u_next)
         agent.store_transition(s, u, a, r, s_next, u_next, done)
 
-    # training loop with fixed epsilon
     for step in range(300):
         metrics = agent.train_step()
         if metrics and step % 25 == 0:

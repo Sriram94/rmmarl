@@ -9,7 +9,6 @@ import numpy as np
 class ActorNetwork(nn.Module):
     def __init__(self, state_dim, rm_state_dim, action_dim, hidden_size=256):
         super(ActorNetwork, self).__init__()
-        # Input: Environment State (s) + RM State (u_j)
         input_dim = state_dim + rm_state_dim
         
         self.net = nn.Sequential(
@@ -18,11 +17,10 @@ class ActorNetwork(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, action_dim),
-            nn.Tanh() # Tanh scales the output action to [-1, 1]
+            nn.Tanh() 
         )
 
     def forward(self, s, u_j):
-        # Concatenate environment state and RM state
         augmented_state = torch.cat([s, u_j], dim=-1)
         action = self.net(augmented_state)
         return action
@@ -30,7 +28,6 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, global_state_dim, total_rm_state_dim, total_action_dim, hidden_size=256):
         super(CriticNetwork, self).__init__()
-        # Input: Global State (s) + All RM States (U) + All Actions (A)
         input_dim = global_state_dim + total_rm_state_dim + total_action_dim
         
         self.net = nn.Sequential(
@@ -38,11 +35,10 @@ class CriticNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1) # Output: Q-value (a scalar)
+            nn.Linear(hidden_size, 1) 
         )
 
     def forward(self, s, all_u, all_a):
-        # Concatenate global state, all RM states, and all actions
         combined_input = torch.cat([s, all_u, all_a], dim=-1)
         q_value = self.net(combined_input)
         return q_value
@@ -71,16 +67,12 @@ class OpponentModel(nn.Module):
         )
 
     def forward(self, s, u_k):
-        # Concatenate environment state and opponent's RM state
         augmented_state = torch.cat([s, u_k], dim=-1)
         action = self.net(augmented_state)
         return action
 
 
 class MADDPG_OM_Agent:
-    """
-    DDPG Agent with Reward Machine State and Opponent Modelling (DDPG-OM).
-    """
     def __init__(self, agent_id, num_agents, state_dim, rm_state_dim, action_dim, 
                  global_state_dim, total_rm_state_dim, total_action_dim, 
                  lr_actor=1e-4, lr_critic=1e-3, lr_om=1e-4, gamma=0.9, tau=0.01):
@@ -119,10 +111,8 @@ class MADDPG_OM_Agent:
         
         for k in range(self.num_agents):
             if k == self.agent_id:
-                # Placeholder for self-action, this will be replaced by the actor later
                 predicted_actions.append(None) 
             else:
-                # Use the Opponent Model for agent k
                 om_k = self.opponent_models[k]
                 u_k = all_u[:, k * self.rm_state_dim : (k+1) * self.rm_state_dim]
                 
@@ -168,7 +158,7 @@ class MADDPG_OM_Agent:
             predicted_actions_prime = self.predict_opponent_actions(s_prime, all_u_prime)
             
             predicted_actions_prime[self.agent_id] = a_j_prime
-            all_a_prime = torch.cat(predicted_actions_prime, dim=-1) # A' = (a_1', ..., a_N')
+            all_a_prime = torch.cat(predicted_actions_prime, dim=-1) 
             
             Q_target_prime = self.target_critic(s_prime, all_u_prime, all_a_prime).squeeze(-1)
             y_j = r_j + self.gamma * Q_target_prime * (1 - terminal)

@@ -1,17 +1,3 @@
-
-"""ma_dqn_crossprod.py
-
-MA-DQN on Cross-Product State Space
-
-
-Components:
-- RewardMachine: small RM API
-- QNetwork: consumes obs, rm_onehot, prev_op_onehot as separate inputs (but internally concatenates them)
-- ReplayBuffer
-- MADQNCrossProductAgent: DQN agent using previous opponent action as input component
-
-"""
-
 import random
 from typing import Callable, Any, Dict, Tuple, List
 import numpy as np
@@ -21,9 +7,6 @@ import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# -----------------------------
-# Reward Machine (simple API)
-# -----------------------------
 class RewardMachine:
     def __init__(self, n_states:int, delta:Dict[Tuple[int, Any], int], sigma:Dict[Tuple[int,int], float], label_fn:Callable[[Any], Any], terminal_states:List[int]=None):
         self.n_states = n_states
@@ -42,13 +25,9 @@ class RewardMachine:
     def is_terminal(self, u:int) -> bool:
         return u in self.terminal_states
 
-# -----------------------------
-# Q-network
-# -----------------------------
 class QNetwork(nn.Module):
     def __init__(self, obs_dim:int, rm_state_dim:int, prev_op_dim:int, n_actions:int, hidden_sizes=[1024, 1024, 1024, 1024, 1024, 1024]):
         super().__init__()
-        # We'll treat each input as its own component; internally we'll concat them before MLP
         in_dim = obs_dim + rm_state_dim + prev_op_dim
         layers = []
         for h in hidden_sizes:
@@ -59,13 +38,9 @@ class QNetwork(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, obs:torch.Tensor, rm_onehot:torch.Tensor, prev_op_onehot:torch.Tensor):
-        # obs: [B, obs_dim], rm_onehot: [B, rm_state_dim], prev_op_onehot: [B, prev_op_dim]
         x = torch.cat([obs, rm_onehot, prev_op_onehot], dim=-1)
         return self.net(x)
 
-# -----------------------------
-# Replay Buffer
-# -----------------------------
 class ReplayBuffer:
     def __init__(self, capacity:int):
         self.capacity = capacity
@@ -86,9 +61,6 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
-# -----------------------------
-# MA-DQN Agent (Cross-Product + Prev Opp Action)
-# -----------------------------
 class MADQNCrossProductAgent:
     def __init__(self,
                  obs_dim:int,
@@ -110,7 +82,6 @@ class MADQNCrossProductAgent:
         self.batch_size = batch_size
         self.device = device
 
-        # Q-network and target: takes obs, rm_onehot, prev_op_onehot as separate inputs
         self.q_net = QNetwork(obs_dim, self.n_rm_states, self.n_prev_op_actions, n_actions).to(device)
         self.q_target = QNetwork(obs_dim, self.n_rm_states, self.n_prev_op_actions, n_actions).to(device)
         self.q_target.load_state_dict(self.q_net.state_dict())
@@ -140,9 +111,6 @@ class MADQNCrossProductAgent:
                 return int(torch.argmax(qvals, dim=-1).item())
 
     def store_transition(self, s, u, a, r, s_next, u_next, done, prev_op_action_idx, prev_op_action_next_idx):
-        # store: s, u, a, r, s_next, u_next, done, prev_op_action_idx, prev_op_action_next_idx
-        # prev_op_action_idx: previous opponent joint action at time t (used as input at time t)
-        # prev_op_action_next_idx: previous opponent joint action at time t+1 (used as input at next state)
         self.replay.push((s, u, a, r, s_next, u_next, float(done), prev_op_action_idx, prev_op_action_next_idx))
 
     def train_step(self):
@@ -159,19 +127,16 @@ class MADQNCrossProductAgent:
         prev_op_batch = torch.tensor(prev_op_batch, dtype=torch.long, device=self.device)
         prev_op_next_batch = torch.tensor(prev_op_next_batch, dtype=torch.long, device=self.device)
 
-        # one-hot encodings for rm states and prev op actions
         rm_onehot = F.one_hot(u_batch, num_classes=self.n_rm_states).float()
         rm_next_onehot = F.one_hot(u_next_batch, num_classes=self.n_rm_states).float()
         prev_op_onehot = F.one_hot(prev_op_batch, num_classes=self.n_prev_op_actions).float()
         prev_op_next_onehot = F.one_hot(prev_op_next_batch, num_classes=self.n_prev_op_actions).float()
 
-        # compute target: r + gamma * max_a' Q_target(s_next, u_next, prev_op_next)
         with torch.no_grad():
             q_next = self.q_target(s_next_batch, rm_next_onehot, prev_op_next_onehot)
             max_q_next, _ = q_next.max(dim=1)
             target_q = r_batch + (1.0 - done_batch) * (self.gamma * max_q_next)
 
-        # current q for taken actions using current network on (s, u, prev_op)
         q_vals = self.q_net(s_batch, rm_onehot, prev_op_onehot)
         q_taken = q_vals.gather(1, a_batch.unsqueeze(1)).squeeze(1)
 
@@ -188,9 +153,6 @@ class MADQNCrossProductAgent:
 
         return {'q_loss': loss.item()}
 
-# -----------------------------
-# Dummy label and RM for testing
-# -----------------------------
 def _dummy_label_fn(env_state):
     s = np.array(env_state)
     ssum = float(s.sum())
@@ -220,12 +182,11 @@ if __name__ == '__main__':
     import torch.nn.functional as F
     obs_dim = 4
     n_actions = 5
-    n_prev_op_actions = 6  # size of previous opponent action encoding
+    n_prev_op_actions = 6  
     rm = build_dummy_rm()
     agent = MADQNCrossProductAgent(obs_dim, n_actions, rm, n_prev_op_actions,
                                    lr=1e-3, gamma=0.99, buffer_size=2000, batch_size=32, target_update_freq=50)
 
-    # populate replay buffer with random transitions (including prev-op values)
     for _ in range(600):
         s = np.random.randn(obs_dim).astype(np.float32)
         u = random.randrange(rm.n_states)
@@ -237,7 +198,6 @@ if __name__ == '__main__':
         prev_op_next = random.randrange(n_prev_op_actions)
         agent.store_transition(s, u, a, r, s_next, u_next, done, prev_op, prev_op_next)
 
-    # run some training steps
     for step in range(300):
         metrics = agent.train_step()
         if metrics and step % 25 == 0:

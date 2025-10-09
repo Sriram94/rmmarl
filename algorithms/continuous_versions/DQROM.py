@@ -8,7 +8,7 @@ from typing import List, Dict
 class ActorNetwork(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_size=256):
         super(ActorNetwork, self).__init__()
-        self.action_dim = action_dim # Needed for joint action construction
+        self.action_dim = action_dim 
         
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_size),
@@ -16,7 +16,7 @@ class ActorNetwork(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, action_dim),
-            nn.Tanh() # Scales action to [-1, 1]
+            nn.Tanh() 
         )
 
     def forward(self, s):
@@ -25,7 +25,6 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, global_state_dim, total_rm_state_dim, total_action_dim, hidden_size=256):
         super(CriticNetwork, self).__init__()
-        # Centralized Input: S + U + A
         input_dim = global_state_dim + total_rm_state_dim + total_action_dim
         
         self.net = nn.Sequential(
@@ -33,7 +32,7 @@ class CriticNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1) # Output: Q-value
+            nn.Linear(hidden_size, 1) 
         )
 
     def forward(self, s, all_u, all_a):
@@ -71,13 +70,11 @@ class DQROM_SubAgent:
     def __init__(self, state_dim, action_dim, global_state_dim, total_rm_state_dim, total_action_dim, lr_actor, lr_critic, tau):
         self.tau = tau
         
-        # Actor Networks
         self.actor = ActorNetwork(state_dim, action_dim)
         self.target_actor = ActorNetwork(state_dim, action_dim)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)
         
-        # Critic Networks
         self.critic = CriticNetwork(global_state_dim, total_rm_state_dim, total_action_dim)
         self.target_critic = CriticNetwork(global_state_dim, total_rm_state_dim, total_action_dim)
         self.target_critic.load_state_dict(self.critic.state_dict())
@@ -159,7 +156,7 @@ class DQROM_Agent:
         pass 
 
     def update(self, batch, all_rm_sub_agents: List[DQROM_SubAgent], all_om_models: List[Dict[int, OpponentModel]]):
-        u_j_idx = batch['u_j_idx'][0].item() # Assume batch size 1 for simplicity here
+        u_j_idx = batch['u_j_idx'][0].item() 
         sub_agent = self.rm_sub_agents[u_j_idx]
         gamma = self.gamma
 

@@ -1,16 +1,3 @@
-
-"""dqrm.py
-
-Deep QRM (DQRM) implementation.
-
-Key components:
-- RewardMachine: small RM API
-- QNetwork: maps observation -> Q-values (per RM state networks)
-- ReplayBuffer
-- DQRMAgent: performs counterfactual updates across RM states
-
-"""
-
 import random
 from typing import Callable, Any, Dict, Tuple, List
 import numpy as np
@@ -20,9 +7,6 @@ import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# -----------------------------
-# Reward Machine (simple API)
-# -----------------------------
 class RewardMachine:
     def __init__(self, n_states: int, delta: Dict[Tuple[int, Any], int],
                  sigma: Dict[Tuple[int, int], float],
@@ -44,9 +28,6 @@ class RewardMachine:
     def is_terminal(self, u: int) -> bool:
         return u in self.terminal_states
 
-# -----------------------------
-# Q-network (per RM state)
-# -----------------------------
 class QNetwork(nn.Module):
     def __init__(self, obs_dim: int, n_actions: int, hidden_sizes=[1024, 1024, 1024, 1024, 1024, 1024]):
         super().__init__()
@@ -62,9 +43,6 @@ class QNetwork(nn.Module):
     def forward(self, obs: torch.Tensor):
         return self.net(obs)
 
-# -----------------------------
-# Replay Buffer
-# -----------------------------
 class ReplayBuffer:
     def __init__(self, capacity: int):
         self.capacity = capacity
@@ -85,9 +63,6 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
-# -----------------------------
-# DQRM Agent
-# -----------------------------
 class DQRMAgent:
     def __init__(self,
                  obs_dim: int,
@@ -107,19 +82,16 @@ class DQRMAgent:
         self.batch_size = batch_size
         self.device = device
 
-        # per-RM-state Q-networks and targets
         self.q_nets = nn.ModuleList([QNetwork(obs_dim, n_actions).to(device) for _ in range(self.n_rm_states)])
         self.q_targets = nn.ModuleList([QNetwork(obs_dim, n_actions).to(device) for _ in range(self.n_rm_states)])
         for tgt, src in zip(self.q_targets, self.q_nets):
             tgt.load_state_dict(src.state_dict())
 
-        # optimizer over all Q parameters
         q_params = []
         for q in self.q_nets:
             q_params += list(q.parameters())
         self.q_optimizer = torch.optim.Adam(q_params, lr=lr)
 
-        # replay
         self.replay = ReplayBuffer(buffer_size)
 
         self.update_count = 0
@@ -135,7 +107,6 @@ class DQRMAgent:
                 return int(torch.argmax(qvals, dim=-1).item())
 
     def store_transition(self, s, u, a, r, s_next, u_next, done):
-        # store: s, u, a, r, s_next, u_next, done
         self.replay.push((s, u, a, r, s_next, u_next, float(done)))
 
     def train_step(self):
@@ -143,7 +114,6 @@ class DQRMAgent:
             return None
         s_batch, u_batch, a_batch, r_batch, s_next_batch, u_next_batch, done_batch = self.replay.sample(self.batch_size)
 
-        # convert to tensors
         s_batch = torch.tensor(np.vstack(s_batch), dtype=torch.float32, device=self.device)
         s_next_batch = torch.tensor(np.vstack(s_next_batch), dtype=torch.float32, device=self.device)
         u_batch = torch.tensor(u_batch, dtype=torch.long, device=self.device)
@@ -155,8 +125,6 @@ class DQRMAgent:
         batch_size = s_batch.shape[0]
         n_rm = self.n_rm_states
 
-        # Compute counterfactual targets for each possible RM state u_cf
-        # targets[batch, u_cf] = r_cf + gamma * max_a' Q_target(s_next, u_cf_next)
         targets = torch.zeros((batch_size, n_rm), dtype=torch.float32, device=self.device)
 
         with torch.no_grad():
@@ -172,7 +140,6 @@ class DQRMAgent:
                 u_cf_next_arr = torch.tensor(u_cf_next_list, dtype=torch.long, device=self.device)
                 r_cf_tensor = torch.tensor(r_cf_list, dtype=torch.float32, device=self.device)
 
-                # compute q_target(s_next, u_cf_next)
                 q_next_vals = torch.zeros((batch_size, self.n_actions), dtype=torch.float32, device=self.device)
                 for i in range(batch_size):
                     u_next_i = int(u_cf_next_arr[i].item())
@@ -182,7 +149,6 @@ class DQRMAgent:
                 target_cf = r_cf_tensor + (1.0 - done_batch) * (self.gamma * max_q_next)
                 targets[:, u_cf] = target_cf
 
-        # Now compute losses: for each u_cf, compute q_net[u_cf](s_batch), gather taken actions, and compare to targets[:, u_cf]
         q_losses = []
         for u_cf in range(n_rm):
             q_net = self.q_nets[u_cf]
@@ -206,9 +172,6 @@ class DQRMAgent:
 
         return {'q_loss': loss_q.item()}
 
-# -----------------------------
-# Dummy label and RM build for testing
-# -----------------------------
 def _dummy_label_fn(env_state):
     s = np.array(env_state)
     ssum = float(s.sum())
@@ -241,7 +204,6 @@ if __name__ == '__main__':
     agent = DQRMAgent(obs_dim, n_actions, rm,
                        lr=1e-3, gamma=0.99, buffer_size=2000, batch_size=32, target_update_freq=50)
 
-    # populate replay buffer with random transitions
     for _ in range(600):
         s = np.random.randn(obs_dim).astype(np.float32)
         u = random.randrange(rm.n_states)
@@ -251,7 +213,6 @@ if __name__ == '__main__':
         r = rm.reward(u, u_next)
         agent.store_transition(s, u, a, r, s_next, u_next, done)
 
-    # run some training steps
     for step in range(300):
         metrics = agent.train_step()
         if metrics and step % 25 == 0:

@@ -1,21 +1,3 @@
-
-"""dqn_om.py
-
-DQN-OM: Deep Q-Network with Opponent Modelling.
-
-
-Key components:
-- RewardMachine: small RM API (used only if you want to include RM state input)
-- OpponentModel: MLP predicting opponent joint-action id
-- QNetwork: MLP that consumes obs, rm_state_onehot, and predicted_op_onehot
-- ReplayBuffer
-- DQNOMAgent: integrates above pieces and performs DQN updates + opponent model updates
-
-Usage:
-- Adapt label_fn and obs/action shaping to your environment.
-- For multi-agent learning, instantiate one agent per controlled agent.
-"""
-
 import random
 from typing import Callable, Any, Dict, Tuple, List
 import numpy as np
@@ -25,9 +7,6 @@ import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# -----------------------------
-# Reward Machine (simple API)
-# -----------------------------
 class RewardMachine:
     def __init__(self, n_states:int, delta:Dict[Tuple[int, Any], int], sigma:Dict[Tuple[int,int], float], label_fn:Callable[[Any], Any], terminal_states:List[int]=None):
         self.n_states = n_states
@@ -46,11 +25,7 @@ class RewardMachine:
     def is_terminal(self, u:int) -> bool:
         return u in self.terminal_states
 
-# -----------------------------
-# Opponent Model
-# -----------------------------
 class OpponentModel(nn.Module):
-    #Predicts opponent joint-action id.
     def __init__(self, obs_dim:int, rm_state_dim:int, prev_op_action_dim:int, hidden_sizes=[64,64,64,64], n_op_actions=10):
         super().__init__()
         self.n_op_actions = n_op_actions
@@ -67,9 +42,6 @@ class OpponentModel(nn.Module):
         x = torch.cat([obs, rm_onehot, prev_op_onehot], dim=-1)
         return self.net(x)
 
-# -----------------------------
-# Q-network (single network)
-# -----------------------------
 class QNetwork(nn.Module):
     def __init__(self, obs_dim:int, rm_state_dim:int, op_action_dim:int, n_actions:int, hidden_sizes=[1024, 1024, 1024, 1024, 1024, 1024]):
         super().__init__()
@@ -86,9 +58,6 @@ class QNetwork(nn.Module):
         x = torch.cat([obs, rm_onehot, op_action_onehot], dim=-1)
         return self.net(x)
 
-# -----------------------------
-# Replay Buffer
-# -----------------------------
 class ReplayBuffer:
     def __init__(self, capacity:int):
         self.capacity = capacity
@@ -109,9 +78,6 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
-# -----------------------------
-# DQN with Opponent Modelling Agent
-# -----------------------------
 class DQNOMAgent:
     def __init__(self, obs_dim:int, n_actions:int, rm:RewardMachine, n_op_actions:int, prev_op_action_dim:int,
                  lr:float=0.01, gamma:float=0.9, buffer_size:int=int(2e7), batch_size:int=64,
@@ -126,10 +92,8 @@ class DQNOMAgent:
         self.batch_size = batch_size
         self.device = device
 
-        # opponent model
         self.opponent_model = OpponentModel(obs_dim, self.n_rm_states, prev_op_action_dim, n_op_actions=n_op_actions).to(device)
 
-        # Q-network and target
         self.q_net = QNetwork(obs_dim, self.n_rm_states, n_op_actions, n_actions).to(device)
         self.q_target = QNetwork(obs_dim, self.n_rm_states, n_op_actions, n_actions).to(device)
         self.q_target.load_state_dict(self.q_net.state_dict())
@@ -168,7 +132,6 @@ class DQNOMAgent:
                 return int(torch.argmax(qvals, dim=-1).item())
 
     def store_transition(self, s, u, a, r, s_next, u_next, done, prev_op_action_idx, op_action_idx):
-        # store transition: s, u, a, r, s_next, u_next, done, prev_op_action_idx, op_action_idx
         self.replay.push((s, u, a, r, s_next, u_next, float(done), prev_op_action_idx, op_action_idx))
 
     def train_step(self):
@@ -186,7 +149,6 @@ class DQNOMAgent:
         prev_op_batch = torch.tensor(prev_op_batch, dtype=torch.long, device=self.device)
         op_act_batch = torch.tensor(op_act_batch, dtype=torch.long, device=self.device)
 
-        # opponent model update
         rm_onehot = F.one_hot(u_batch, num_classes=self.n_rm_states).float()
         prev_op_onehot = F.one_hot(prev_op_batch, num_classes=self.n_op_actions).float()
         op_logits = self.opponent_model(s_batch, rm_onehot, prev_op_onehot)
@@ -195,9 +157,7 @@ class DQNOMAgent:
         op_loss.backward()
         self.op_optimizer.step()
 
-        # DQN update (use predicted opponent action for input to Q)
         with torch.no_grad():
-            # predict opponent action for next state (use observed op_act as previous-op for next prediction)
             rm_next_onehot = F.one_hot(u_next_batch, num_classes=self.n_rm_states).float()
             prev_op_next_oh = F.one_hot(op_act_batch, num_classes=self.n_op_actions).float()
             op_logits_next = self.opponent_model(s_next_batch, rm_next_onehot, prev_op_next_oh)
@@ -208,7 +168,6 @@ class DQNOMAgent:
             max_q_next, _ = q_next.max(dim=1)
             target_q = r_batch + (1.0 - done_batch) * (self.gamma * max_q_next)
 
-        # current Q estimates using predicted opponent action at current state
         rm_onehot_curr = F.one_hot(u_batch, num_classes=self.n_rm_states).float()
         prev_op_curr_oh = F.one_hot(prev_op_batch, num_classes=self.n_op_actions).float()
         op_logits_curr = self.opponent_model(s_batch, rm_onehot_curr, prev_op_curr_oh)
@@ -231,9 +190,6 @@ class DQNOMAgent:
 
         return {'q_loss': loss_q.item(), 'op_loss': op_loss.item()}
 
-# -----------------------------
-# Dummy label and RM build for testing
-# -----------------------------
 def _dummy_label_fn(env_state):
     s = np.array(env_state)
     ssum = float(s.sum())
@@ -268,7 +224,6 @@ if __name__ == '__main__':
     agent = DQNOMAgent(obs_dim, n_actions, rm, n_op_actions, prev_op_action_dim,
                        lr=1e-3, gamma=0.99, buffer_size=2000, batch_size=32, target_update_freq=50)
 
-    # populate replay buffer with random transitions
     for _ in range(500):
         s = np.random.randn(obs_dim).astype(np.float32)
         u = random.randrange(rm.n_states)
@@ -280,7 +235,6 @@ if __name__ == '__main__':
         op_act = random.randrange(n_op_actions)
         agent.store_transition(s, u, a, r, s_next, u_next, done, prev_op, op_act)
 
-    # run some training steps
     for step in range(200):
         metrics = agent.train_step()
         if metrics and step % 20 == 0:

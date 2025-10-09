@@ -1,8 +1,3 @@
-"""
-Training script for DCROM vs DQN on Coined Pommerman
-Agent 0 uses DCROM (with opponent modeling and counterfactual updates)
-Agent 1 uses DQN (cross-product baseline without opponent modeling)
-"""
 
 import numpy as np
 import torch
@@ -13,7 +8,6 @@ from collections import deque
 from typing import Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 
-# Import DCROM and DQN components
 from DCROM import DCROMAgent, RewardMachine as DCROMRewardMachine
 from DQN import DQNCrossProductAgent, RewardMachine as DQNRewardMachine
 
@@ -27,12 +21,11 @@ class CoinStatus:
 
 
 class SimplifiedPommermanEnv:
-    """Simplified Pommerman-like environment for testing"""
     def __init__(self, board_size=11, max_steps=800):
         self.board_size = board_size
         self.max_steps = max_steps
-        self.state_dim = board_size * board_size + 10  # flattened board + extra features
-        self.n_actions = 6  # stop, up, down, left, right, bomb
+        self.state_dim = board_size * board_size + 10  
+        self.n_actions = 6  
         self.reset()
     
     def reset(self):
@@ -48,10 +41,8 @@ class SimplifiedPommermanEnv:
         return self._get_obs(), self._get_info()
     
     def _get_obs(self):
-        """Generate observation vector"""
         obs = []
         for agent_id in range(2):
-            # Flatten board state + agent positions + coin info
             board = np.random.rand(self.board_size * self.board_size) * 0.1
             extra = np.array([
                 self.agent_positions[agent_id][0] / self.board_size,
@@ -62,7 +53,7 @@ class SimplifiedPommermanEnv:
                 float(self.agents_alive[agent_id]),
                 float(self.agents_alive[1-agent_id]),
                 self.step_count / self.max_steps,
-                0.0, 0.0  # padding
+                0.0, 0.0  
             ])
             obs_vector = np.concatenate([board, extra]).astype(np.float32)
             obs.append(obs_vector)
@@ -81,7 +72,6 @@ class SimplifiedPommermanEnv:
     def step(self, actions):
         self.step_count += 1
         
-        # Update agent positions based on actions
         for agent_id, action in enumerate(actions):
             if not self.agents_alive[agent_id]:
                 continue
@@ -96,7 +86,6 @@ class SimplifiedPommermanEnv:
                 x = min(self.board_size - 1, x + 1)
             self.agent_positions[agent_id] = (x, y)
         
-        # Check coin capture
         capturing_agent = None
         if self.coin_status == CoinStatus.AVAILABLE:
             for agent_id in range(2):
@@ -105,19 +94,15 @@ class SimplifiedPommermanEnv:
                     capturing_agent = agent_id
                     break
         
-        # Simulate combat (simplified)
-        if random.random() < 0.005:  # 0.5% chance per step
+        if random.random() < 0.005:  
             victim = random.randint(0, 1)
             self.agents_alive[victim] = False
         
-        # Check termination
         done = (self.step_count >= self.max_steps or 
                 not any(self.agents_alive))
         
-        # Get observations
         obs = self._get_obs()
         
-        # Compute rewards (environment rewards, RM will provide additional rewards)
         rewards = [0.0, 0.0]
         
         info = self._get_info()
@@ -127,28 +112,8 @@ class SimplifiedPommermanEnv:
 
 
 def build_pommerman_rm_dcrom(agent_id: int) -> DCROMRewardMachine:
-    """
-    Build DCROM Reward Machine for Coined Pommerman
-    
-    RM States:
-    0: Initial (no coin captured)
-    1: Agent has coin
-    2: Opponent has coin
-    3: Terminal win
-    4: Terminal lose
-    5: Terminal tie
-    
-    Events (as integers for simplicity):
-    0: nothing
-    1: capture_coin
-    2: opponent_captures
-    3: kill_opponent
-    4: agent_dies
-    5: timeout
-    """
     n_states = 6
     
-    # Define transitions: (state, event) -> next_state
     delta = {
         # From state 0 (initial)
         (0, 0): 0,  # nothing
@@ -177,20 +142,16 @@ def build_pommerman_rm_dcrom(agent_id: int) -> DCROMRewardMachine:
     
     # Define rewards: (state, next_state) -> reward
     sigma = {
-        (0, 1): 0.1,   # Small reward for getting coin
+        (0, 1): 0.0,   # No reward for getting coin
         (1, 3): 1.0,   # Big reward for winning
-        (0, 5): 0.0,   # Tie
-        (1, 5): 0.0,   # Tie
+        (0, 5): -1.0,   # Tie
+        (1, 5): -1.0,   # Tie
         (2, 4): -1.0,  # Penalty for losing
-        (2, 5): 0.0,   # Tie
+        (2, 5): -1.0,   # Tie
     }
     
     # Define label function
     def label_fn(env_state):
-        """
-        Map environment info to event
-        env_state should be a dict with info from environment
-        """
         if not isinstance(env_state, dict):
             return 0  # nothing
         
@@ -200,28 +161,23 @@ def build_pommerman_rm_dcrom(agent_id: int) -> DCROMRewardMachine:
         step = env_state.get('step', 0)
         max_steps = env_state.get('max_steps', 800)
         
-        # Check if this agent captured the coin
         if capturing_agent == agent_id:
-            return 1  # capture_coin
+            return 1  
         
-        # Check if opponent captured the coin
         if capturing_agent is not None and capturing_agent != agent_id:
-            return 2  # opponent_captures
+            return 2  
         
-        # Check if this agent died
         if not agents_alive[agent_id]:
-            return 4  # agent_dies
+            return 4  
         
-        # Check if opponent died
         opponent_id = 1 - agent_id
         if not agents_alive[opponent_id]:
-            return 3  # kill_opponent
+            return 3  
         
-        # Check timeout
         if step >= max_steps:
-            return 5  # timeout
+            return 5  
         
-        return 0  # nothing
+        return 0  
     
     terminal_states = [3, 4, 5]
     
@@ -229,15 +185,9 @@ def build_pommerman_rm_dcrom(agent_id: int) -> DCROMRewardMachine:
 
 
 def build_pommerman_rm_dqn(agent_id: int) -> DQNRewardMachine:
-    """
-    Build DQN Reward Machine for Coined Pommerman
-    Same structure as DCROM RM but using DQN's RewardMachine class
-    """
     n_states = 6
     
-    # Define transitions: (state, event) -> next_state
     delta = {
-        # From state 0 (initial)
         (0, 0): 0,  # nothing
         (0, 1): 1,  # capture coin
         (0, 2): 2,  # opponent captures
@@ -262,7 +212,6 @@ def build_pommerman_rm_dqn(agent_id: int) -> DQNRewardMachine:
         (5, 0): 5, (5, 1): 5, (5, 2): 5, (5, 3): 5, (5, 4): 5, (5, 5): 5,
     }
     
-    # Define rewards: (state, next_state) -> reward
     sigma = {
         (0, 1): 0.1,   # Small reward for getting coin
         (1, 3): 1.0,   # Big reward for winning
@@ -272,12 +221,7 @@ def build_pommerman_rm_dqn(agent_id: int) -> DQNRewardMachine:
         (2, 5): 0.0,   # Tie
     }
     
-    # Define label function
     def label_fn(env_state):
-        """
-        Map environment info to event
-        env_state should be a dict with info from environment
-        """
         if not isinstance(env_state, dict):
             return 0  # nothing
         
@@ -287,24 +231,19 @@ def build_pommerman_rm_dqn(agent_id: int) -> DQNRewardMachine:
         step = env_state.get('step', 0)
         max_steps = env_state.get('max_steps', 800)
         
-        # Check if this agent captured the coin
         if capturing_agent == agent_id:
             return 1  # capture_coin
         
-        # Check if opponent captured the coin
         if capturing_agent is not None and capturing_agent != agent_id:
             return 2  # opponent_captures
         
-        # Check if this agent died
         if not agents_alive[agent_id]:
             return 4  # agent_dies
         
-        # Check if opponent died
         opponent_id = 1 - agent_id
         if not agents_alive[opponent_id]:
             return 3  # kill_opponent
         
-        # Check timeout
         if step >= max_steps:
             return 5  # timeout
         
@@ -316,7 +255,6 @@ def build_pommerman_rm_dqn(agent_id: int) -> DQNRewardMachine:
 
 
 class PommermanDCROMvsDQNTrainer:
-    """Trainer for DCROM vs DQN on Coined Pommerman"""
     
     def __init__(self,
                  env,
@@ -341,16 +279,13 @@ class PommermanDCROMvsDQNTrainer:
         
         os.makedirs(save_dir, exist_ok=True)
         
-        # Tracking
         self.episode_rewards = {0: [], 1: []}  # 0=DCROM, 1=DQN
         self.episode_lengths = []
         self.win_counts = {0: 0, 1: 0, 'tie': 0}  # 0=DCROM wins, 1=DQN wins
         
-        # Previous opponent action (for DCROM's opponent model)
         self.prev_dqn_action = 0
     
     def train(self):
-        """Main training loop"""
         print("=" * 70)
         print(f"Starting Training: DCROM (Agent 0) vs DQN (Agent 1)")
         print(f"Episodes: {self.n_episodes}")
@@ -359,7 +294,6 @@ class PommermanDCROMvsDQNTrainer:
         for episode in range(self.n_episodes):
             episode_reward, episode_length, winner = self._run_episode()
             
-            # Update tracking
             self.episode_rewards[0].append(episode_reward[0])
             self.episode_rewards[1].append(episode_reward[1])
             self.episode_lengths.append(episode_length)
@@ -370,14 +304,11 @@ class PommermanDCROMvsDQNTrainer:
             else:
                 self.win_counts['tie'] += 1
             
-            # Decay epsilon
             self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
             
-            # Logging
             if (episode + 1) % self.log_freq == 0:
                 self._log_progress(episode)
             
-            # Save checkpoints
             if (episode + 1) % 100 == 0:
                 self._save_checkpoint(episode)
         
@@ -387,29 +318,23 @@ class PommermanDCROMvsDQNTrainer:
         self._final_report()
     
     def _run_episode(self) -> Tuple[List[float], int, int]:
-        """Run one episode and return rewards, length, and winner"""
         obs_list, info = self.env.reset()
         
-        # Initialize RM states
         rm_states = [0, 0]  # Both start at initial state
         
-        # Episode tracking
         episode_rewards = [0.0, 0.0]
         episode_length = 0
         done = False
         
-        # Reset previous DQN action
         self.prev_dqn_action = 0
         
         while not done:
-            # Agent 0 (DCROM) selects action
             dcrom_obs = obs_list[0]
             dcrom_rm_state = rm_states[0]
             dcrom_action = self.dcrom_agent.select_action(
                 dcrom_obs, dcrom_rm_state, self.prev_dqn_action, eps=self.epsilon
             )
             
-            # Agent 1 (DQN) selects action
             dqn_obs = obs_list[1]
             dqn_rm_state = rm_states[1]
             dqn_action = self.dqn_agent.select_action(
@@ -418,18 +343,14 @@ class PommermanDCROMvsDQNTrainer:
             
             actions = [dcrom_action, dqn_action]
             
-            # Execute actions
             next_obs_list, env_rewards, done, info = self.env.step(actions)
             
-            # Update RM states and get RM rewards for both agents
             dcrom_next_rm_state = self.dcrom_agent.rm.next_state(rm_states[0], info)
             dcrom_rm_reward = self.dcrom_agent.rm.reward(rm_states[0], dcrom_next_rm_state)
             
             dqn_next_rm_state = self.dqn_agent.rm.next_state(rm_states[1], info)
             dqn_rm_reward = self.dqn_agent.rm.reward(rm_states[1], dqn_next_rm_state)
             
-            # Store transition for DCROM (agent 0)
-            # DCROM needs: s, u, a, r, s_next, u_next, done, prev_op_action_idx, op_action_idx
             self.dcrom_agent.store_transition(
                 s=obs_list[0],
                 u=rm_states[0],
@@ -442,8 +363,6 @@ class PommermanDCROMvsDQNTrainer:
                 op_action_idx=dqn_action
             )
             
-            # Store transition for DQN (agent 1)
-            # DQN needs: s, u, a, r, s_next, u_next, done
             self.dqn_agent.store_transition(
                 s=obs_list[1],
                 u=rm_states[1],
@@ -454,11 +373,9 @@ class PommermanDCROMvsDQNTrainer:
                 done=done
             )
             
-            # Train both agents
             self.dcrom_agent.train_step()
             self.dqn_agent.train_step()
             
-            # Update for next iteration
             obs_list = next_obs_list
             rm_states = [dcrom_next_rm_state, dqn_next_rm_state]
             self.prev_dqn_action = dqn_action
@@ -467,7 +384,6 @@ class PommermanDCROMvsDQNTrainer:
             episode_rewards[1] += dqn_rm_reward
             episode_length += 1
         
-        # Determine winner
         winner = -1  # tie
         if episode_rewards[0] > episode_rewards[1]:
             winner = 0  # DCROM wins
@@ -477,7 +393,6 @@ class PommermanDCROMvsDQNTrainer:
         return episode_rewards, episode_length, winner
     
     def _log_progress(self, episode: int):
-        """Log training progress"""
         window = min(100, episode + 1)
         avg_reward_dcrom = np.mean(self.episode_rewards[0][-window:])
         avg_reward_dqn = np.mean(self.episode_rewards[1][-window:])
@@ -500,7 +415,6 @@ class PommermanDCROMvsDQNTrainer:
         print(f"    Tie:   {tie_rate:.2%}")
     
     def _save_checkpoint(self, episode: int):
-        """Save model checkpoints"""
         checkpoint_path = os.path.join(self.save_dir, f'checkpoint_ep{episode+1}.pt')
         torch.save({
             'episode': episode,
@@ -514,7 +428,6 @@ class PommermanDCROMvsDQNTrainer:
         print(f"  Checkpoint saved: {checkpoint_path}")
     
     def _final_report(self):
-        """Print final training report"""
         total_games = self.n_episodes
         print(f"\nFinal Statistics:")
         print(f"  Total Episodes: {total_games}")
@@ -527,7 +440,6 @@ class PommermanDCROMvsDQNTrainer:
         print(f"\n  Ties: {self.win_counts['tie']} ({self.win_counts['tie']/total_games:.2%})")
         print(f"  Avg Episode Length: {np.mean(self.episode_lengths):.1f}")
         
-        # Analyze which algorithm is better
         if self.win_counts[0] > self.win_counts[1]:
             advantage = (self.win_counts[0] - self.win_counts[1]) / total_games
             print(f"\n  ✓ DCROM outperforms DQN by {advantage:.2%}")
@@ -538,10 +450,8 @@ class PommermanDCROMvsDQNTrainer:
             print(f"\n  = Both algorithms perform equally")
     
     def plot_training_curves(self, save_path: str = None):
-        """Plot training curves comparing DCROM vs DQN"""
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         
-        # Plot rewards
         window = 100
         if len(self.episode_rewards[0]) >= window:
             smoothed_dcrom = np.convolve(self.episode_rewards[0], 
@@ -556,7 +466,6 @@ class PommermanDCROMvsDQNTrainer:
             axes[0, 0].legend()
             axes[0, 0].grid(True, alpha=0.3)
         
-        # Plot episode lengths
         if len(self.episode_lengths) >= window:
             smoothed_lengths = np.convolve(self.episode_lengths, 
                                           np.ones(window)/window, mode='valid')
@@ -566,7 +475,6 @@ class PommermanDCROMvsDQNTrainer:
             axes[0, 1].set_ylabel('Length')
             axes[0, 1].grid(True, alpha=0.3)
         
-        # Plot cumulative win rates
         episodes = list(range(1, len(self.episode_rewards[0]) + 1))
         cumulative_dcrom = []
         cumulative_dqn = []
@@ -589,7 +497,6 @@ class PommermanDCROMvsDQNTrainer:
         axes[1, 0].grid(True, alpha=0.3)
         axes[1, 0].set_ylim([0, 1])
         
-        # Plot reward distribution comparison
         axes[1, 1].hist(self.episode_rewards[0], alpha=0.6, label='DCROM', bins=30, color='blue')
         axes[1, 1].hist(self.episode_rewards[1], alpha=0.6, label='DQN', bins=30, color='orange')
         axes[1, 1].set_title('Reward Distribution', fontsize=12, fontweight='bold')
@@ -614,16 +521,13 @@ class PommermanDCROMvsDQNTrainer:
         
         os.makedirs(save_dir, exist_ok=True)
         
-        # Tracking
         self.episode_rewards = {0: [], 1: []}
         self.episode_lengths = []
         self.win_counts = {0: 0, 1: 0, 'tie': 0}
         
-        # Previous opponent actions (for opponent model)
         self.prev_op_actions = [0, 0]
     
     def train(self):
-        """Main training loop"""
         print("=" * 70)
         print(f"Starting DCROM Training on Coined Pommerman")
         print(f"Episodes: {self.n_episodes}")
@@ -632,7 +536,6 @@ class PommermanDCROMvsDQNTrainer:
         for episode in range(self.n_episodes):
             episode_reward, episode_length, winner = self._run_episode()
             
-            # Update tracking
             self.episode_rewards[0].append(episode_reward[0])
             self.episode_rewards[1].append(episode_reward[1])
             self.episode_lengths.append(episode_length)
@@ -643,14 +546,11 @@ class PommermanDCROMvsDQNTrainer:
             else:
                 self.win_counts['tie'] += 1
             
-            # Decay epsilon
             self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
             
-            # Logging
             if (episode + 1) % self.log_freq == 0:
                 self._log_progress(episode)
             
-            # Save checkpoints
             if (episode + 1) % 100 == 0:
                 self._save_checkpoint(episode)
         
@@ -660,22 +560,17 @@ class PommermanDCROMvsDQNTrainer:
         self._final_report()
     
     def _run_episode(self) -> Tuple[List[float], int, int]:
-        """Run one episode and return rewards, length, and winner"""
         obs_list, info = self.env.reset()
         
-        # Initialize RM states
-        rm_states = [0, 0]  # Both start at initial state
+        rm_states = [0, 0]  
         
-        # Episode tracking
         episode_rewards = [0.0, 0.0]
         episode_length = 0
         done = False
         
-        # Reset previous opponent actions
         self.prev_op_actions = [0, 0]
         
         while not done:
-            # Select actions for both agents
             actions = []
             for agent_id in range(2):
                 agent = self.agent_0 if agent_id == 0 else self.agent_1
@@ -686,25 +581,20 @@ class PommermanDCROMvsDQNTrainer:
                 action = agent.select_action(obs, rm_state, prev_op_action, eps=self.epsilon)
                 actions.append(action)
             
-            # Execute actions
             next_obs_list, env_rewards, done, info = self.env.step(actions)
             
-            # Update RM states and get RM rewards
             next_rm_states = []
             rm_rewards = []
             for agent_id in range(2):
                 agent = self.agent_0 if agent_id == 0 else self.agent_1
                 rm = agent.rm
                 
-                # Get next RM state
                 next_rm_state = rm.next_state(rm_states[agent_id], info)
                 next_rm_states.append(next_rm_state)
                 
-                # Get RM reward
                 rm_reward = rm.reward(rm_states[agent_id], next_rm_state)
                 rm_rewards.append(rm_reward)
             
-            # Store transitions for both agents
             for agent_id in range(2):
                 agent = self.agent_0 if agent_id == 0 else self.agent_1
                 opponent_id = 1 - agent_id
@@ -721,11 +611,9 @@ class PommermanDCROMvsDQNTrainer:
                     op_action_idx=actions[opponent_id]
                 )
             
-            # Train both agents
             self.agent_0.train_step()
             self.agent_1.train_step()
             
-            # Update for next iteration
             obs_list = next_obs_list
             rm_states = next_rm_states
             self.prev_op_actions = actions
@@ -734,8 +622,7 @@ class PommermanDCROMvsDQNTrainer:
             episode_rewards[1] += rm_rewards[1]
             episode_length += 1
         
-        # Determine winner
-        winner = -1  # tie
+        winner = -1  
         if episode_rewards[0] > episode_rewards[1]:
             winner = 0
         elif episode_rewards[1] > episode_rewards[0]:
@@ -744,7 +631,6 @@ class PommermanDCROMvsDQNTrainer:
         return episode_rewards, episode_length, winner
     
     def _log_progress(self, episode: int):
-        """Log training progress"""
         window = min(100, episode + 1)
         avg_reward_0 = np.mean(self.episode_rewards[0][-window:])
         avg_reward_1 = np.mean(self.episode_rewards[1][-window:])
@@ -762,7 +648,6 @@ class PommermanDCROMvsDQNTrainer:
         print(f"  Win Rates: Agent 0: {win_rate_0:.2%}, Agent 1: {win_rate_1:.2%}, Tie: {tie_rate:.2%}")
     
     def _save_checkpoint(self, episode: int):
-        """Save model checkpoints"""
         checkpoint_path = os.path.join(self.save_dir, f'checkpoint_ep{episode+1}.pt')
         torch.save({
             'episode': episode,
@@ -777,7 +662,6 @@ class PommermanDCROMvsDQNTrainer:
         print(f"  Checkpoint saved: {checkpoint_path}")
     
     def _final_report(self):
-        """Print final training report"""
         total_games = self.n_episodes
         print(f"\nFinal Statistics:")
         print(f"  Total Episodes: {total_games}")
@@ -789,10 +673,8 @@ class PommermanDCROMvsDQNTrainer:
         print(f"  Avg Episode Length: {np.mean(self.episode_lengths):.1f}")
     
     def plot_training_curves(self, save_path: str = None):
-        """Plot training curves"""
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         
-        # Plot rewards
         window = 100
         if len(self.episode_rewards[0]) >= window:
             smoothed_0 = np.convolve(self.episode_rewards[0], 
@@ -807,7 +689,6 @@ class PommermanDCROMvsDQNTrainer:
             axes[0, 0].legend()
             axes[0, 0].grid(True)
         
-        # Plot episode lengths
         if len(self.episode_lengths) >= window:
             smoothed_lengths = np.convolve(self.episode_lengths, 
                                           np.ones(window)/window, mode='valid')
@@ -817,7 +698,6 @@ class PommermanDCROMvsDQNTrainer:
             axes[0, 1].set_ylabel('Length')
             axes[0, 1].grid(True)
         
-        # Plot cumulative win rates
         episodes = list(range(1, len(self.episode_rewards[0]) + 1))
         cumulative_0 = []
         cumulative_1 = []
@@ -838,7 +718,6 @@ class PommermanDCROMvsDQNTrainer:
         axes[1, 0].legend()
         axes[1, 0].grid(True)
         
-        # Plot reward distribution
         axes[1, 1].hist(self.episode_rewards[0], alpha=0.5, label='Agent 0', bins=30)
         axes[1, 1].hist(self.episode_rewards[1], alpha=0.5, label='Agent 1', bins=30)
         axes[1, 1].set_title('Reward Distribution')
@@ -855,24 +734,20 @@ class PommermanDCROMvsDQNTrainer:
 
 
 def main():
-    """Main function to run training"""
     print("Initializing Coined Pommerman with DCROM...")
     
-    # Create environment
     env = SimplifiedPommermanEnv(board_size=11, max_steps=800)
     obs_dim = env.state_dim
     n_actions = env.n_actions
     
     print(f"Environment created: obs_dim={obs_dim}, n_actions={n_actions}")
     
-    # Create reward machines for both agents
     rm_0 = build_pommerman_rm(agent_id=0)
     rm_1 = build_pommerman_rm(agent_id=1)
     
     print("Reward machines created")
     
-    # Create DCROM agents
-    n_op_actions = n_actions  # Opponent can take same actions
+    n_op_actions = n_actions  
     
     agent_0 = DCROMAgent(
         obs_dim=obs_dim,
@@ -902,12 +777,11 @@ def main():
     
     print("DCROM agents created")
     
-    # Create trainer
     trainer = PommermanDCROMTrainer(
         env=env,
         agent_0=agent_0,
         agent_1=agent_1,
-        n_episodes=1000,  # Start with fewer episodes for testing
+        n_episodes=1000,  
         epsilon_start=1.0,
         epsilon_end=0.1,
         epsilon_decay=0.995,
@@ -917,10 +791,8 @@ def main():
     
     print("Trainer initialized\n")
     
-    # Train
     trainer.train()
     
-    # Plot results
     trainer.plot_training_curves(save_path='./training_curves.png')
 
 

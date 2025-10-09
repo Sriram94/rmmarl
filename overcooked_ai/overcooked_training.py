@@ -4,13 +4,9 @@ from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
 from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
 from overcooked_ai_py.mdp.overcooked_state import OvercookedState
 
-# Import your existing DQNCrossProductAgent
 from DQN import DQNCrossProductAgent
 
 
-# ============================================================
-# Reward Machine Definition
-# ============================================================
 class RewardMachine:
     def __init__(self):
         self.state = "s0"
@@ -37,7 +33,7 @@ class RewardMachine:
         elif self.state == "s2":
             if event == "soup_delivered":
                 reward = 100.0
-                self.state = "s0"  # reset for next soup
+                self.state = "s0"  
 
         return reward
 
@@ -49,34 +45,23 @@ def make_overcooked_env(layout_name="cramped_room", horizon=1200):
 
 
 def encode_state(obs):
-    """Flatten the joint observation into a vector."""
     return np.concatenate([obs["both_agent_obs"].flatten()])
 
 
 def extract_event(prev_state: OvercookedState, next_state: OvercookedState):
-    """
-    Derives high-level symbolic events from true OvercookedState transitions.
-    Compatible with overcooked_ai_py>=1.1.0.
-    """
 
-    # ---- Check pot states for ingredient additions ----
     for loc, pot in next_state.pot_states.items():
         prev_pot = prev_state.pot_states.get(loc, None)
         if pot["num_ing"] > (prev_pot["num_ing"] if prev_pot else 0):
-            # Ingredient added
             ing_types = ["onion", "tomato", "carrot"]
-            # Randomly assign type if multiple ingredients (toy heuristic)
             return random.choice([f"{t}_added" for t in ing_types])
 
-        # Soup cooked
         if pot["cooking_tick"] == 0 and prev_pot and prev_pot["cooking_tick"] > 0:
             return "soup_cooked"
 
-    # ---- Check deliveries ----
     if next_state.num_delivered > prev_state.num_delivered:
         return "soup_delivered"
 
-    # ---- Check player holding state ----
     for i, player in enumerate(next_state.players):
         prev_player = prev_state.players[i]
         if player.has_object() and not prev_player.has_object():
@@ -93,7 +78,6 @@ def train_two_crossproduct_agents_with_rm(num_episodes=1000, target_update_freq=
     state_dim = encode_state(obs).shape[0]
     n_actions = len(env.mdp.get_actions())
 
-    # Two cooperative DQN agents
     agent1 = DQNCrossProductAgent(state_dim, n_actions)
     agent2 = DQNCrossProductAgent(state_dim, n_actions)
 
@@ -117,7 +101,6 @@ def train_two_crossproduct_agents_with_rm(num_episodes=1000, target_update_freq=
 
             next_state, base_rewards, done, info = env.step(joint_action)
 
-            # Extract symbolic event
             event = extract_event(env_state, next_state)
             currentrm1state = rm1.state
             currentrm2state = rm2.state
@@ -128,7 +111,6 @@ def train_two_crossproduct_agents_with_rm(num_episodes=1000, target_update_freq=
 
             s2 = encode_state(env.lossless_state_encoding(next_state))
 
-            # Store transition and learn
             agent1.store_transition(s1, currentrm1state, a1, r1, s2, newrm1state, done)
             agent2.store_transition(s1, currentrm2state, a2, r2, s2, newrm2state, done)
             agent1.learn()

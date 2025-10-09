@@ -5,7 +5,6 @@ import random
 import numpy as np
 from collections import deque
 
-# ---------------------- Deep Low-level Network ----------------------
 class DeepQNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_layers=[1024]*6):
         super(DeepQNetwork, self).__init__()
@@ -21,7 +20,6 @@ class DeepQNetwork(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-# ---------------------- Smaller High-level Network ----------------------
 class HighLevelNetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(HighLevelNetwork, self).__init__()
@@ -34,7 +32,6 @@ class HighLevelNetwork(nn.Module):
         x = torch.relu(self.fc2(x))
         return self.out(x)
 
-# ---------------------- Replay Buffer ----------------------
 class ReplayBuffer:
     def __init__(self, capacity=int(2e7)):
         self.buffer = deque(maxlen=capacity)
@@ -50,7 +47,6 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
-# ---------------------- Low-level Agent ----------------------
 class LowLevelAgent:
     def __init__(self, state_dim, action_dim, lr=0.01, gamma=0.9, buffer_size=int(2e7), batch_size=64):
         self.q_network = DeepQNetwork(state_dim, action_dim)
@@ -97,7 +93,6 @@ class LowLevelAgent:
     def update_target(self):
         self.target_network.load_state_dict(self.q_network.state_dict())
 
-# ---------------------- High-level Agent ----------------------
 class HighLevelAgent:
     def __init__(self, state_dim, num_options, lr=0.01, gamma=0.9, buffer_size=int(2e7), batch_size=64):
         self.q_network = HighLevelNetwork(state_dim, num_options)
@@ -144,12 +139,10 @@ class HighLevelAgent:
     def update_target(self):
         self.target_network.load_state_dict(self.q_network.state_dict())
 
-# ---------------------- DHRL-RM Agent ----------------------
 class DHRL_RM:
     def __init__(self, env, rm, state_dim, action_dim, num_options, option_length=10):
         self.env = env
-        self.rm = rm  # Reward Machine object with reset() and get_next_state()
-        self.num_options = num_options
+        self.rm = rm  
         self.option_length = option_length
         self.low_level_agents = [LowLevelAgent(state_dim, action_dim) for _ in range(num_options)]
         self.high_level_agent = HighLevelAgent(state_dim + rm.num_states, num_options)

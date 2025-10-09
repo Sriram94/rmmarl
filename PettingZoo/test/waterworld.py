@@ -1,9 +1,3 @@
-"""
-Agents:
-  Pursuers: DCROM agents (RM-driven)
-  Poisons:  DQN agents (env reward driven)
-"""
-
 import numpy as np, random, sys
 from typing import Dict, List, Tuple, Any
 from pettingzoo import AECEnv
@@ -11,7 +5,6 @@ from pettingzoo.utils import wrappers
 import random
 from gymnasium import spaces
 
-# Ensure access to agent files
 sys.path.append("/mnt/data")
 try:
     from DCROM import DCROMAgent
@@ -24,11 +17,7 @@ except Exception as e:
     DQNCrossProductAgent = None
     print("Warning: could not import DQNCrossProductAgent:", e)
 
-# ----------------------------------------------------------
-# Basic RM classes
-# ----------------------------------------------------------
 class SimpleSequenceRM:
-    """A reward machine for a simple ordered color sequence."""
     def __init__(self, colors: List[str]):
         self.colors = colors
         self.n_states = len(colors) + 1
@@ -46,13 +35,11 @@ class SimpleSequenceRM:
         return u in self.terminal_states
 
 class ConjunctiveRM:
-    """A conjunction (AND) of multiple RMs."""
     def __init__(self, rms: List[SimpleSequenceRM]):
         self.rms = rms
         self.n_states = np.prod([rm.n_states for rm in rms])
         self.terminal_states = None
     def unpack_state(self, u: int):
-        """Decode combined index to component states."""
         s = []
         base = 1
         for rm in self.rms:
@@ -74,9 +61,6 @@ class ConjunctiveRM:
         subs, next_subs = self.unpack_state(u), self.unpack_state(u_next)
         return 1.0 if all(self.rms[i].is_terminal(next_subs[i]) for i in range(len(self.rms))) and not all(self.rms[i].is_terminal(subs[i]) for i in range(len(self.rms))) else 0.0
 
-# ----------------------------------------------------------
-# Waterworld Environment
-# ----------------------------------------------------------
 COLOR_NAMES = ["red", "green", "blue", "cyan", "magenta", "yellow"]
 _DISCRETE_ACTIONS = [
     np.array([0.0, 0.0]), np.array([1,0]), np.array([-1,0]),
@@ -119,7 +103,6 @@ class WaterworldColorRMCoop(AECEnv):
         self.last_event = {a: None for a in self.pursuer_names}
 
     def build_rms(self):
-        """Define all six RMs."""
         rm0 = SimpleSequenceRM(["red", "green"])
         rm1 = SimpleSequenceRM(["blue", "cyan"])
         rm2 = SimpleSequenceRM(["magenta", "yellow"])
@@ -159,7 +142,6 @@ class WaterworldColorRMCoop(AECEnv):
         return None, reward, False, False, {}
 
     def _joint_step(self, acts):
-        # move agents
         norms = np.linalg.norm(acts, axis=1, keepdims=True)+1e-8
         acts = acts / norms * self.speed
         self.agent_pos = np.clip(self.agent_pos + acts, 0, self.world_size)
@@ -167,7 +149,6 @@ class WaterworldColorRMCoop(AECEnv):
         self.last_event = {a: None for a in self.pursuer_names}
         team_events = []
 
-        # Pursuer-food collisions
         for i,p in enumerate(self.pursuer_names):
             pos = self.agent_pos[i]
             for food in self.food_items:
@@ -176,7 +157,6 @@ class WaterworldColorRMCoop(AECEnv):
                     team_events.append(food['color'])
                     food['pos'] = self.rng.rand(2)
 
-        # Poison-pursuer collisions (with coupled rewards)
         for j,pz in enumerate(self.poison_names):
             pz_idx = self.n_pursuers + j
             pz_pos = self.agent_pos[pz_idx]
@@ -185,7 +165,6 @@ class WaterworldColorRMCoop(AECEnv):
                     self._cumulative_rewards[pz] += 1.0
                     self._cumulative_rewards[p] -= 1.0
 
-        # Joint event triggers (if >=2 pursuers got events)
         if len(team_events) >= 2:
             for i,rm in enumerate(self.shared_rms):
                 u_prev = self.rm_states[i]
@@ -193,12 +172,10 @@ class WaterworldColorRMCoop(AECEnv):
                 r = rm.reward(u_prev, u_next)
                 self.rm_states[i] = u_next
                 if r > 0:
-                    # reward shared equally among pursuers
                     share = r / len(self.pursuer_names)
                     for p in self.pursuer_names:
                         self._cumulative_rewards[p] += share
 
-        # refresh observations
         return {a:self._make_obs(i) for i,a in enumerate(self.agents)}
 
     def _make_obs(self, idx):
@@ -214,12 +191,10 @@ class WaterworldColorRMCoop(AECEnv):
         obs = np.concatenate(parts+[np.zeros(2)],0).astype(np.float32)
         return obs
 
-# Wrapper
 def env():
     e = WaterworldColorRMCoop()
     return wrappers.OrderEnforcingWrapper(e)
 
-# Training hook placeholder (needs to be modified for each head-to-head comparison with DQN)
 
 def train_demo(n_episodes=3, max_steps=100):
     e = env()
