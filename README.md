@@ -18,7 +18,7 @@ Code base for the RLC 2026 paper: Multi-Agent Reinforcement Learning with Reward
 ## Installation Instructions for Ubuntu 18.04
 
 
-
+### Pommerman Environment
 
 ##### Requirements
 
