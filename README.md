@@ -151,6 +151,10 @@ cd overcooked_ai
 python overcooked_training.py
 ```
 
+## Note
+
+This is research code and will not be actively maintained. Please send an email to ***sriramsubramanian@cunet.carleton.ca*** for questions or comments.
+
 ## Code Citations
 
 We would like to cite [Playground](https://github.com/MultiAgentLearning/playground) for code providing the environments used in the Pommerman experiments. 
@@ -160,5 +164,23 @@ We would like to cite [PettingZoo](https://github.com/Farama-Foundation/PettingZ
 We would like to cite [Overcooked](https://github.com/HumanCompatibleAI/overcooked_ai) for code providing the environments used in the Overcooked experiments. 
 
 All of the above mentioned repositories have been released under open (MIT or Apache2) licenses. 
+
+
+## Paper citation
+
+If you found this helpful, please cite the following paper:
+
+<pre>
+
+@article{Sriramrmmarl2026,
+  title = 	 {Multi-Agent Reinforcement Learning with Reward Machines for Mixed Cooperative-Competitive Environments},
+  author = 	 {Subramanian, Sriram Ganapathi and Klassen, Toryn and Larson, McIlraith, Sheila} 
+  journal =  {Reinforcement Learning Journal},
+  year = 	 {2026}
+}
+
+</pre>
+
+
 
 
