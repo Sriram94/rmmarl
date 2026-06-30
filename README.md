@@ -174,7 +174,7 @@ If you found this helpful, please cite the following paper:
 
 @article{Sriramrmmarl2026,
   title = 	 {Multi-Agent Reinforcement Learning with Reward Machines for Mixed Cooperative-Competitive Environments},
-  author = 	 {Subramanian, Sriram Ganapathi and Klassen, Toryn and Larson, McIlraith, Sheila} 
+  author = 	 {Subramanian, Sriram Ganapathi and Klassen, Toryn and McIlraith, Sheila} 
   journal =  {Reinforcement Learning Journal},
   year = 	 {2026}
 }
